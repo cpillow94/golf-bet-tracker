@@ -1,0 +1,1594 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <meta name="apple-mobile-web-app-capable" content="yes">
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+    <meta name="apple-mobile-web-app-title" content="Golf Bets">
+    <title>Golf Bet Tracker</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+    <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+    <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+</head>
+<body class="bg-gradient-to-br from-green-800 to-green-600 min-h-screen">
+    <div id="root"></div>
+
+    <script type="text/babel">
+        const { useState, useEffect } = React;
+
+        function GolfBetTracker() {
+          const [screen, setScreen] = useState('home');
+          const [savedPlayers, setSavedPlayers] = useState([]);
+          const [savedCourses, setSavedCourses] = useState([]);
+          const [gameHistory, setGameHistory] = useState([]);
+          
+          // Manage Players state
+          const [newPlayerName, setNewPlayerName] = useState('');
+          const [newPlayerHcp, setNewPlayerHcp] = useState('');
+          
+          // Manage Courses state
+          const [newCourseName, setNewCourseName] = useState('');
+          const [newCourseHcp, setNewCourseHcp] = useState('1,3,5,7,9,11,13,15,17,2,4,6,8,10,12,14,16,18');
+          const [newCoursePars, setNewCoursePars] = useState('4,4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5');
+          
+          const [gameState, setGameState] = useState({
+            matchPlay: {
+              team1: [],
+              team2: [],
+              bets: { front: 5, back: 5, total: 5 },
+              holeHandicaps: [],
+              holePars: [],
+              courseName: '',
+              scores: Array(18).fill(null).map(() => ({
+                team1: [null, null],
+                team2: [null, null]
+              })),
+              currentHole: 1
+            }
+          });
+
+          const [setupData, setSetupData] = useState({
+            team1player1: '',
+            team1player1hcp: '',
+            team1player2: '',
+            team1player2hcp: '',
+            team2player1: '',
+            team2player1hcp: '',
+            team2player2: '',
+            team2player2hcp: '',
+            betFront: '5',
+            betBack: '5',
+            betTotal: '5',
+            courseName: '',
+            holeHandicaps: '1,3,5,7,9,11,13,15,17,2,4,6,8,10,12,14,16,18',
+            holePars: '4,4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5'
+          });
+
+          // Load saved data on mount
+          useEffect(() => {
+            const players = localStorage.getItem('golfPlayers');
+            const courses = localStorage.getItem('golfCourses');
+            const history = localStorage.getItem('golfGameHistory');
+            if (players) setSavedPlayers(JSON.parse(players));
+            if (courses) setSavedCourses(JSON.parse(courses));
+            if (history) setGameHistory(JSON.parse(history));
+          }, []);
+
+          const savePlayer = (name, hcp) => {
+            if (!name) return;
+            const existing = savedPlayers.find(p => p.name === name);
+            let updated;
+            if (existing) {
+              updated = savedPlayers.map(p => p.name === name ? { name, hcp: parseFloat(hcp) } : p);
+            } else {
+              updated = [...savedPlayers, { name, hcp: parseFloat(hcp) }];
+            }
+            setSavedPlayers(updated);
+            localStorage.setItem('golfPlayers', JSON.stringify(updated));
+          };
+
+          const saveCourse = (courseName, holeHandicaps, pars) => {
+            if (!courseName) return;
+            const existing = savedCourses.find(c => c.name === courseName);
+            let updated;
+            if (existing) {
+              updated = savedCourses.map(c => c.name === courseName ? { name: courseName, holeHandicaps, pars } : c);
+            } else {
+              updated = [...savedCourses, { name: courseName, holeHandicaps, pars }];
+            }
+            setSavedCourses(updated);
+            localStorage.setItem('golfCourses', JSON.stringify(updated));
+          };
+
+          const handlePlayerSelect = (field, hcpField, playerName) => {
+            if (playerName === '__new__') {
+              setSetupData({...setupData, [field]: '', [hcpField]: ''});
+            } else if (playerName) {
+              const player = savedPlayers.find(p => p.name === playerName);
+              if (player) {
+                setSetupData({...setupData, [field]: playerName, [hcpField]: player.hcp.toString()});
+              }
+            }
+          };
+
+          const handleCourseSelect = (courseName) => {
+            if (courseName === '__new__') {
+              // Clear for new course
+              setSetupData({...setupData, courseName: '', holeHandicaps: '1,3,5,7,9,11,13,15,17,2,4,6,8,10,12,14,16,18', holePars: '4,4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5'});
+            } else if (courseName) {
+              const course = savedCourses.find(c => c.name === courseName);
+              if (course) {
+                setSetupData({
+                  ...setupData, 
+                  courseName, 
+                  holeHandicaps: course.holeHandicaps.join(','),
+                  holePars: course.pars ? course.pars.join(',') : '4,4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5'
+                });
+              }
+            }
+          };
+
+          const startMatchPlay = () => {
+            const team1 = [
+              { name: setupData.team1player1, hcp: parseFloat(setupData.team1player1hcp) },
+              { name: setupData.team1player2, hcp: parseFloat(setupData.team1player2hcp) }
+            ];
+            const team2 = [
+              { name: setupData.team2player1, hcp: parseFloat(setupData.team2player1hcp) },
+              { name: setupData.team2player2, hcp: parseFloat(setupData.team2player2hcp) }
+            ];
+
+            if (!team1[0].name || !team1[1].name || !team2[0].name || !team2[1].name) {
+              alert('Please enter all player names');
+              return;
+            }
+
+            savePlayer(setupData.team1player1, setupData.team1player1hcp);
+            savePlayer(setupData.team1player2, setupData.team1player2hcp);
+            savePlayer(setupData.team2player1, setupData.team2player1hcp);
+            savePlayer(setupData.team2player2, setupData.team2player2hcp);
+
+            const bets = {
+              front: parseFloat(setupData.betFront) || 5,
+              back: parseFloat(setupData.betBack) || 5,
+              total: parseFloat(setupData.betTotal) || 5
+            };
+
+            const holeHandicaps = setupData.holeHandicaps.split(',').map(h => parseInt(h.trim()));
+            if (holeHandicaps.length !== 18) {
+              alert('Please enter exactly 18 hole handicaps');
+              return;
+            }
+
+            const holePars = setupData.holePars.split(',').map(h => parseInt(h.trim()));
+            if (holePars.length !== 18) {
+              alert('Please enter exactly 18 hole pars');
+              return;
+            }
+
+            // Save course if named
+            if (setupData.courseName) {
+              saveCourse(setupData.courseName, holeHandicaps, holePars);
+            }
+
+            setGameState({
+              matchPlay: {
+                team1,
+                team2,
+                bets,
+                holeHandicaps,
+                holePars,
+                courseName: setupData.courseName,
+                scores: Array(18).fill(null).map(() => ({
+                  team1: [null, null],
+                  team2: [null, null]
+                })),
+                currentHole: 1
+              }
+            });
+
+            setScreen('scoring');
+          };
+
+          const calculateNetScore = (grossScore, hcp, holeHcp, lowestHcp) => {
+            if (grossScore === null || grossScore === '') return null;
+            const strokesNeeded = Math.round(hcp - lowestHcp);
+            const getsStroke = strokesNeeded >= holeHcp ? 1 : 0;
+            return grossScore - getsStroke;
+          };
+
+          const getPlayerStrokes = (playerHcp, lowestHcp) => {
+            return Math.round(playerHcp - lowestHcp);
+          };
+
+          const getStrokeHoles = (strokes, holeHandicaps) => {
+            if (strokes === 0) return [];
+            return holeHandicaps.map((hcp, idx) => strokes >= hcp ? idx + 1 : null).filter(h => h !== null);
+          };
+
+          const getHoleWinner = (hole) => {
+            const mp = gameState.matchPlay;
+            const scores = mp.scores[hole];
+            
+            if (!scores.team1[0] || !scores.team1[1] || !scores.team2[0] || !scores.team2[1]) {
+              return null;
+            }
+
+            const allPlayers = [...mp.team1, ...mp.team2];
+            const lowestHcp = Math.min(...allPlayers.map(p => p.hcp));
+            const holeHcp = mp.holeHandicaps[hole];
+
+            const team1Net = [
+              calculateNetScore(scores.team1[0], mp.team1[0].hcp, holeHcp, lowestHcp),
+              calculateNetScore(scores.team1[1], mp.team1[1].hcp, holeHcp, lowestHcp)
+            ];
+            const team2Net = [
+              calculateNetScore(scores.team2[0], mp.team2[0].hcp, holeHcp, lowestHcp),
+              calculateNetScore(scores.team2[1], mp.team2[1].hcp, holeHcp, lowestHcp)
+            ];
+
+            const team1Best = Math.min(...team1Net);
+            const team2Best = Math.min(...team2Net);
+
+            if (team1Best < team2Best) return 'team1';
+            if (team2Best < team1Best) return 'team2';
+            return 'tie';
+          };
+
+          const getMatchStatus = () => {
+            let frontTeam1 = 0, frontTeam2 = 0;
+            let backTeam1 = 0, backTeam2 = 0;
+            let totalTeam1 = 0, totalTeam2 = 0;
+
+            for (let i = 0; i < 18; i++) {
+              const winner = getHoleWinner(i);
+              if (winner === 'team1') {
+                totalTeam1++;
+                if (i < 9) frontTeam1++;
+                else backTeam1++;
+              } else if (winner === 'team2') {
+                totalTeam2++;
+                if (i < 9) frontTeam2++;
+                else backTeam2++;
+              }
+            }
+
+            return { frontTeam1, frontTeam2, backTeam1, backTeam2, totalTeam1, totalTeam2 };
+          };
+
+          const checkMissingScores = () => {
+            const mp = gameState.matchPlay;
+            const missing = [];
+            
+            for (let i = 0; i < 18; i++) {
+              if (!mp.scores[i].team1[0]) missing.push(`Hole ${i+1}: ${mp.team1[0].name}`);
+              if (!mp.scores[i].team1[1]) missing.push(`Hole ${i+1}: ${mp.team1[1].name}`);
+              if (!mp.scores[i].team2[0]) missing.push(`Hole ${i+1}: ${mp.team2[0].name}`);
+              if (!mp.scores[i].team2[1]) missing.push(`Hole ${i+1}: ${mp.team2[1].name}`);
+            }
+            
+            return missing;
+          };
+
+          const updateScore = (hole, playerIndex, value) => {
+            const newGameState = { ...gameState };
+            const scoreValue = value === '' ? null : parseInt(value);
+            
+            if (playerIndex < 2) {
+              newGameState.matchPlay.scores[hole].team1[playerIndex] = scoreValue;
+            } else {
+              newGameState.matchPlay.scores[hole].team2[playerIndex - 2] = scoreValue;
+            }
+            
+            setGameState(newGameState);
+          };
+
+          const nextHole = () => {
+            if (gameState.matchPlay.currentHole < 18) {
+              setGameState({
+                ...gameState,
+                matchPlay: { ...gameState.matchPlay, currentHole: gameState.matchPlay.currentHole + 1 }
+              });
+            } else {
+              alert('This is the last hole! Click "Finish Round" to see results.');
+            }
+          };
+
+          const previousHole = () => {
+            if (gameState.matchPlay.currentHole > 1) {
+              setGameState({
+                ...gameState,
+                matchPlay: { ...gameState.matchPlay, currentHole: gameState.matchPlay.currentHole - 1 }
+              });
+            }
+          };
+
+          const finishRound = () => {
+            const missing = checkMissingScores();
+            if (missing.length > 0) {
+              const proceed = window.confirm(`Missing scores for:\n${missing.slice(0, 10).join('\n')}${missing.length > 10 ? `\n...and ${missing.length - 10} more` : ''}\n\nProceed anyway?`);
+              if (!proceed) return;
+            }
+            setScreen('results');
+          };
+
+          const getPlayerTotals = (playerIdx, teamIdx) => {
+            const mp = gameState.matchPlay;
+            const allPlayers = [...mp.team1, ...mp.team2];
+            const lowestHcp = Math.min(...allPlayers.map(p => p.hcp));
+            
+            const player = teamIdx === 1 ? mp.team1[playerIdx] : mp.team2[playerIdx];
+            
+            let frontGross = 0, frontNet = 0, backGross = 0, backNet = 0;
+            
+            for (let i = 0; i < 18; i++) {
+              const gross = teamIdx === 1 ? mp.scores[i].team1[playerIdx] : mp.scores[i].team2[playerIdx];
+              if (!gross) continue;
+              
+              const net = calculateNetScore(gross, player.hcp, mp.holeHandicaps[i], lowestHcp);
+              
+              if (i < 9) {
+                frontGross += gross;
+                frontNet += net;
+              } else {
+                backGross += gross;
+                backNet += net;
+              }
+            }
+            
+            return {
+              frontGross, frontNet,
+              backGross, backNet,
+              totalGross: frontGross + backGross,
+              totalNet: frontNet + backNet
+            };
+          };
+
+          const addPlayer = () => {
+            if (!newPlayerName || !newPlayerHcp) {
+              alert('Please enter both name and handicap');
+              return;
+            }
+            savePlayer(newPlayerName, newPlayerHcp);
+            setNewPlayerName('');
+            setNewPlayerHcp('');
+          };
+
+          const deletePlayer = (playerName) => {
+            const updated = savedPlayers.filter(p => p.name !== playerName);
+            setSavedPlayers(updated);
+            localStorage.setItem('golfPlayers', JSON.stringify(updated));
+          };
+
+          const editPlayer = (oldName, oldHcp) => {
+            const newName = window.prompt('Edit player name:', oldName);
+            if (newName === null) return;
+            const newHcpInput = window.prompt('Edit handicap:', oldHcp);
+            if (newHcpInput === null) return;
+            
+            const updated = savedPlayers.map(p => 
+              p.name === oldName ? { name: newName, hcp: parseFloat(newHcpInput) } : p
+            );
+            setSavedPlayers(updated);
+            localStorage.setItem('golfPlayers', JSON.stringify(updated));
+          };
+
+          const addCourse = () => {
+            if (!newCourseName) {
+              alert('Please enter course name');
+              return;
+            }
+            const holeHandicaps = newCourseHcp.split(',').map(h => parseInt(h.trim()));
+            if (holeHandicaps.length !== 18) {
+              alert('Please enter exactly 18 hole handicaps');
+              return;
+            }
+            const pars = newCoursePars.split(',').map(h => parseInt(h.trim()));
+            if (pars.length !== 18) {
+              alert('Please enter exactly 18 hole pars');
+              return;
+            }
+            saveCourse(newCourseName, holeHandicaps, pars);
+            setNewCourseName('');
+            setNewCourseHcp('1,3,5,7,9,11,13,15,17,2,4,6,8,10,12,14,16,18');
+            setNewCoursePars('4,4,3,5,4,4,3,4,5,4,4,3,5,4,4,3,4,5');
+          };
+
+          const deleteCourse = (courseName) => {
+            const updated = savedCourses.filter(c => c.name !== courseName);
+            setSavedCourses(updated);
+            localStorage.setItem('golfCourses', JSON.stringify(updated));
+          };
+
+          const saveGameToHistory = (gameData) => {
+            const newGame = {
+              id: Date.now(),
+              date: new Date().toISOString(),
+              gameType: 'Match Play',
+              ...gameData
+            };
+            const updated = [newGame, ...gameHistory];
+            setGameHistory(updated);
+            localStorage.setItem('golfGameHistory', JSON.stringify(updated));
+          };
+
+          const exportToCSV = () => {
+            if (gameHistory.length === 0) {
+              alert('No games to export');
+              return;
+            }
+
+            let csv = 'Date,Game Type,Course,Team 1 Player 1,Team 1 Player 2,Team 2 Player 1,Team 2 Player 2,Front 9 Winner,Back 9 Winner,Total Winner,Team 1 Money,Team 2 Money\n';
+            
+            gameHistory.forEach(game => {
+              const date = new Date(game.date).toLocaleDateString();
+              csv += `${date},${game.gameType},${game.courseName || 'N/A'},`;
+              csv += `${game.team1[0].name},${game.team1[1].name},${game.team2[0].name},${game.team2[1].name},`;
+              csv += `${game.frontWinner},${game.backWinner},${game.totalWinner},`;
+              csv += `${game.team1Money},${game.team2Money}\n`;
+            });
+
+            const blob = new Blob([csv], { type: 'text/csv' });
+            const url = window.URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = `golf-game-history-${new Date().toISOString().split('T')[0]}.csv`;
+            a.click();
+            window.URL.revokeObjectURL(url);
+          };
+
+          const renderScoring = () => {
+            const mp = gameState.matchPlay;
+            const hole = mp.currentHole - 1;
+            
+            const allPlayers = [...mp.team1, ...mp.team2];
+            const lowestHcp = Math.min(...allPlayers.map(p => p.hcp));
+            const strokesNeeded = allPlayers.map(p => getPlayerStrokes(p.hcp, lowestHcp));
+            const holeHcp = mp.holeHandicaps[hole];
+            
+            const playersWithStroke = strokesNeeded.map(strokes => strokes >= holeHcp);
+
+            const status = getMatchStatus();
+
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <div className="flex gap-2 mb-4">
+                  <button 
+                    onClick={() => setScreen('scorecard')}
+                    className="flex-1 px-3 py-2 bg-blue-600 text-white rounded-lg text-sm font-semibold hover:bg-blue-700"
+                  >
+                    View Scorecard
+                  </button>
+                  <button 
+                    onClick={finishRound}
+                    className="flex-1 px-3 py-2 bg-green-600 text-white rounded-lg text-sm font-semibold hover:bg-green-700"
+                  >
+                    Finish Round
+                  </button>
+                </div>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-2">Match Play</h1>
+                
+                <div className="text-center mb-4">
+                  <div className="text-3xl font-bold text-green-800">Hole {mp.currentHole}</div>
+                  <div className="text-sm text-gray-700 mt-1">
+                    Par {mp.holePars ? mp.holePars[hole] : 4} | Handicap {mp.holeHandicaps[hole]}
+                  </div>
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-3 mb-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-green-800">Team 1</h3>
+                    <div className="text-xs text-gray-600">
+                      {mp.team1[0].name}: {strokesNeeded[0]} strokes on holes {getStrokeHoles(strokesNeeded[0], mp.holeHandicaps).join(', ') || 'none'}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-600 mb-2 text-right">
+                    {mp.team1[1].name}: {strokesNeeded[1]} strokes on holes {getStrokeHoles(strokesNeeded[1], mp.holeHandicaps).join(', ') || 'none'}
+                  </div>
+                  
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <strong>{mp.team1[0].name}</strong> ({mp.team1[0].hcp})
+                        {playersWithStroke[0] && (
+                          <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded mt-1 inline-block ml-2">
+                            +1 stroke
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        value={mp.scores[hole].team1[0] || ''}
+                        onChange={(e) => updateScore(hole, 0, e.target.value)}
+                        placeholder="Score"
+                        className="w-14 px-2 py-1 border-2 border-green-200 rounded text-center text-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <strong>{mp.team1[1].name}</strong> ({mp.team1[1].hcp})
+                        {playersWithStroke[1] && (
+                          <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded mt-1 inline-block ml-2">
+                            +1 stroke
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        value={mp.scores[hole].team1[1] || ''}
+                        onChange={(e) => updateScore(hole, 1, e.target.value)}
+                        placeholder="Score"
+                        className="w-14 px-2 py-1 border-2 border-green-200 rounded text-center text-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-orange-50 rounded-lg p-3 mb-3">
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold text-orange-800">Team 2</h3>
+                    <div className="text-xs text-gray-600">
+                      {mp.team2[0].name}: {strokesNeeded[2]} strokes on holes {getStrokeHoles(strokesNeeded[2], mp.holeHandicaps).join(', ') || 'none'}
+                    </div>
+                  </div>
+                  <div className="text-xs text-gray-600 mb-2 text-right">
+                    {mp.team2[1].name}: {strokesNeeded[3]} strokes on holes {getStrokeHoles(strokesNeeded[3], mp.holeHandicaps).join(', ') || 'none'}
+                  </div>
+                  
+                  <div className="mb-2">
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <strong>{mp.team2[0].name}</strong> ({mp.team2[0].hcp})
+                        {playersWithStroke[2] && (
+                          <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded mt-1 inline-block ml-2">
+                            +1 stroke
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        value={mp.scores[hole].team2[0] || ''}
+                        onChange={(e) => updateScore(hole, 2, e.target.value)}
+                        placeholder="Score"
+                        className="w-14 px-2 py-1 border-2 border-orange-200 rounded text-center text-lg"
+                      />
+                    </div>
+                  </div>
+
+                  <div>
+                    <div className="flex items-center justify-between">
+                      <div className="flex-1">
+                        <strong>{mp.team2[1].name}</strong> ({mp.team2[1].hcp})
+                        {playersWithStroke[3] && (
+                          <div className="text-xs bg-yellow-100 text-yellow-800 px-2 py-1 rounded mt-1 inline-block ml-2">
+                            +1 stroke
+                          </div>
+                        )}
+                      </div>
+                      <input
+                        type="number"
+                        value={mp.scores[hole].team2[1] || ''}
+                        onChange={(e) => updateScore(hole, 3, e.target.value)}
+                        placeholder="Score"
+                        className="w-14 px-2 py-1 border-2 border-orange-200 rounded text-center text-lg"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex gap-2 mb-3">
+                  <button
+                    onClick={previousHole}
+                    className="flex-1 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg font-semibold hover:bg-gray-300"
+                  >
+                    ← Prev
+                  </button>
+                  <button
+                    onClick={nextHole}
+                    className="flex-1 px-4 py-2 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                  >
+                    Next →
+                  </button>
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-3">
+                  <h3 className="font-bold text-green-800 mb-2">Match Status</h3>
+                  <div className="space-y-1 text-sm">
+                    <div className="flex justify-between">
+                      <span>Front 9:</span>
+                      <span className="font-semibold">
+                        Team 1: {status.frontTeam1} | Team 2: {status.frontTeam2}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Back 9:</span>
+                      <span className="font-semibold">
+                        Team 1: {status.backTeam1} | Team 2: {status.backTeam2}
+                      </span>
+                    </div>
+                    <div className="flex justify-between">
+                      <span>Total 18:</span>
+                      <span className="font-semibold">
+                        Team 1: {status.totalTeam1} | Team 2: {status.totalTeam2}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            );
+          };
+
+          const renderScorecard = () => {
+            const mp = gameState.matchPlay;
+            const allPlayers = [...mp.team1, ...mp.team2];
+            const lowestHcp = Math.min(...allPlayers.map(p => p.hcp));
+
+            return (
+              <div className="p-4 max-w-4xl mx-auto">
+                <button 
+                  onClick={() => setScreen('scoring')}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  ← Back to Scoring
+                </button>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Full Scorecard</h1>
+                
+                <div className="overflow-x-auto">
+                  <table className="w-full text-xs border-collapse">
+                    <thead>
+                      <tr className="bg-green-700 text-white">
+                        <th className="p-2 border">Hole</th>
+                        <th className="p-2 border">Par</th>
+                        <th className="p-2 border">{mp.team1[0].name}</th>
+                        <th className="p-2 border">{mp.team1[1].name}</th>
+                        <th className="p-2 border">{mp.team2[0].name}</th>
+                        <th className="p-2 border">{mp.team2[1].name}</th>
+                        <th className="p-2 border">Winner</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {Array.from({length: 18}, (_, i) => {
+                        const holeHcp = mp.holeHandicaps[i];
+                        const holePar = mp.holePars ? mp.holePars[i] : 4;
+                        const strokes = allPlayers.map(p => getPlayerStrokes(p.hcp, lowestHcp));
+                        const getsStroke = strokes.map(s => s >= holeHcp);
+                        
+                        const scores = [
+                          mp.scores[i].team1[0],
+                          mp.scores[i].team1[1],
+                          mp.scores[i].team2[0],
+                          mp.scores[i].team2[1]
+                        ];
+                        
+                        const netScores = scores.map((s, idx) => 
+                          s ? calculateNetScore(s, allPlayers[idx].hcp, holeHcp, lowestHcp) : null
+                        );
+                        
+                        const winner = getHoleWinner(i);
+                        
+                        return (
+                          <tr key={i} className={i === 8 || i === 17 ? 'border-b-2 border-green-800' : ''}>
+                            <td className="p-2 border bg-green-50 font-bold text-center">{i + 1}</td>
+                            <td className="p-2 border bg-gray-50 text-center font-semibold">{holePar}</td>
+                            {scores.map((score, idx) => (
+                              <td key={idx} className="p-2 border text-center">
+                                {score ? (
+                                  <div>
+                                    <div className={`font-bold ${
+                                      score < holePar ? 'text-blue-600' : 
+                                      score > holePar ? 'text-red-600' : 
+                                      'text-gray-800'
+                                    }`}>{score}</div>
+                                    {getsStroke[idx] && <div className="text-xs text-gray-600">({netScores[idx]})</div>}
+                                  </div>
+                                ) : '-'}
+                              </td>
+                            ))}
+                            <td className={`p-2 border text-center font-semibold ${
+                              winner === 'team1' ? 'bg-blue-100 text-blue-800' :
+                              winner === 'team2' ? 'bg-orange-100 text-orange-800' :
+                              'bg-gray-100 text-gray-600'
+                            }`}>
+                              {winner === 'team1' ? 'T1' : winner === 'team2' ? 'T2' : winner === 'tie' ? 'Tie' : '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            );
+          };
+
+          const renderResults = () => {
+            const mp = gameState.matchPlay;
+            const status = getMatchStatus();
+            
+            // Calculate money - CORRECTED
+            let team1Wins = 0, team2Wins = 0;
+            let team1Money = 0, team2Money = 0;
+
+            // Front 9
+            let frontWinner = 'Push';
+            if (status.frontTeam1 > status.frontTeam2) {
+              team1Wins++;
+              team1Money += mp.bets.front;
+              frontWinner = 'Team 1';
+            } else if (status.frontTeam2 > status.frontTeam1) {
+              team2Wins++;
+              team2Money += mp.bets.front;
+              frontWinner = 'Team 2';
+            }
+
+            // Back 9
+            let backWinner = 'Push';
+            if (status.backTeam1 > status.backTeam2) {
+              team1Wins++;
+              team1Money += mp.bets.back;
+              backWinner = 'Team 1';
+            } else if (status.backTeam2 > status.backTeam1) {
+              team2Wins++;
+              team2Money += mp.bets.back;
+              backWinner = 'Team 2';
+            }
+
+            // Total 18
+            let totalWinner = 'Push';
+            if (status.totalTeam1 > status.totalTeam2) {
+              team1Wins++;
+              team1Money += mp.bets.total;
+              totalWinner = 'Team 1';
+            } else if (status.totalTeam2 > status.totalTeam1) {
+              team2Wins++;
+              team2Money += mp.bets.total;
+              totalWinner = 'Team 2';
+            }
+
+            // Net settlement - split the team total among the 2 players
+            const netSettlement = team1Money - team2Money;
+            const perPlayer = Math.abs(netSettlement) / 2;
+
+            // Get player totals
+            const t1p1 = getPlayerTotals(0, 1);
+            const t1p2 = getPlayerTotals(1, 1);
+            const t2p1 = getPlayerTotals(0, 2);
+            const t2p2 = getPlayerTotals(1, 2);
+
+            // Save game to history (only once, check if already saved)
+            const saveGame = () => {
+              const gameData = {
+                courseName: mp.courseName,
+                team1: mp.team1,
+                team2: mp.team2,
+                scores: mp.scores,
+                holeHandicaps: mp.holeHandicaps,
+                holePars: mp.holePars,
+                bets: mp.bets,
+                frontWinner,
+                backWinner,
+                totalWinner,
+                team1Money,
+                team2Money,
+                status,
+                playerTotals: {
+                  t1p1,
+                  t1p2,
+                  t2p1,
+                  t2p2
+                }
+              };
+              saveGameToHistory(gameData);
+              alert('Game saved to history!');
+            };
+
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Match Results</h1>
+                
+                <div className="bg-green-50 rounded-lg p-4 mb-4">
+                  <h2 className="text-lg font-bold text-green-800 mb-3">Final Score</h2>
+                  
+                  <div className="space-y-2 text-sm">
+                    <div className="flex justify-between items-center pb-2 border-b border-green-200">
+                      <span>Front 9:</span>
+                      <span>
+                        Team 1: {status.frontTeam1} | Team 2: {status.frontTeam2}
+                        {status.frontTeam1 > status.frontTeam2 && (
+                          <span className="ml-2 text-green-700 font-bold">(T1 +${mp.bets.front})</span>
+                        )}
+                        {status.frontTeam2 > status.frontTeam1 && (
+                          <span className="ml-2 text-orange-700 font-bold">(T2 +${mp.bets.front})</span>
+                        )}
+                        {status.frontTeam1 === status.frontTeam2 && (
+                          <span className="ml-2 text-gray-600">(Push)</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center pb-2 border-b border-green-200">
+                      <span>Back 9:</span>
+                      <span>
+                        Team 1: {status.backTeam1} | Team 2: {status.backTeam2}
+                        {status.backTeam1 > status.backTeam2 && (
+                          <span className="ml-2 text-green-700 font-bold">(T1 +${mp.bets.back})</span>
+                        )}
+                        {status.backTeam2 > status.backTeam1 && (
+                          <span className="ml-2 text-orange-700 font-bold">(T2 +${mp.bets.back})</span>
+                        )}
+                        {status.backTeam1 === status.backTeam2 && (
+                          <span className="ml-2 text-gray-600">(Push)</span>
+                        )}
+                      </span>
+                    </div>
+
+                    <div className="flex justify-between items-center">
+                      <span>Total 18:</span>
+                      <span>
+                        Team 1: {status.totalTeam1} | Team 2: {status.totalTeam2}
+                        {status.totalTeam1 > status.totalTeam2 && (
+                          <span className="ml-2 text-green-700 font-bold">(T1 +${mp.bets.total})</span>
+                        )}
+                        {status.totalTeam2 > status.totalTeam1 && (
+                          <span className="ml-2 text-orange-700 font-bold">(T2 +${mp.bets.total})</span>
+                        )}
+                        {status.totalTeam1 === status.totalTeam2 && (
+                          <span className="ml-2 text-gray-600">(Push)</span>
+                        )}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h3 className="text-lg font-bold text-blue-900 mb-3">Player Scores</h3>
+                  
+                  <div className="mb-3">
+                    <strong className="block mb-2 text-blue-800">Team 1</strong>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="font-semibold">{mp.team1[0].name}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Front 9:</span>
+                        <span>Gross: {t1p1.frontGross} | Net: {t1p1.frontNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Back 9:</span>
+                        <span>Gross: {t1p1.backGross} | Net: {t1p1.backNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold">
+                        <span>Total:</span>
+                        <span>Gross: {t1p1.totalGross} | Net: {t1p1.totalNet}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-sm space-y-1 mt-3">
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="font-semibold">{mp.team1[1].name}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Front 9:</span>
+                        <span>Gross: {t1p2.frontGross} | Net: {t1p2.frontNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Back 9:</span>
+                        <span>Gross: {t1p2.backGross} | Net: {t1p2.backNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold">
+                        <span>Total:</span>
+                        <span>Gross: {t1p2.totalGross} | Net: {t1p2.totalNet}</span>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div>
+                    <strong className="block mb-2 text-orange-800">Team 2</strong>
+                    <div className="text-sm space-y-1">
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="font-semibold">{mp.team2[0].name}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Front 9:</span>
+                        <span>Gross: {t2p1.frontGross} | Net: {t2p1.frontNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Back 9:</span>
+                        <span>Gross: {t2p1.backGross} | Net: {t2p1.backNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold">
+                        <span>Total:</span>
+                        <span>Gross: {t2p1.totalGross} | Net: {t2p1.totalNet}</span>
+                      </div>
+                    </div>
+
+                    <div className="text-sm space-y-1 mt-3">
+                      <div className="flex justify-between border-b pb-1">
+                        <span className="font-semibold">{mp.team2[1].name}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Front 9:</span>
+                        <span>Gross: {t2p2.frontGross} | Net: {t2p2.frontNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs">
+                        <span>Back 9:</span>
+                        <span>Gross: {t2p2.backGross} | Net: {t2p2.backNet}</span>
+                      </div>
+                      <div className="flex justify-between text-xs font-bold">
+                        <span>Total:</span>
+                        <span>Gross: {t2p2.totalGross} | Net: {t2p2.totalNet}</span>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="bg-amber-50 rounded-lg p-4 mb-4">
+                  <h3 className="text-lg font-bold text-amber-900 mb-3">💰 Settlement</h3>
+                  
+                  {netSettlement > 0 && (
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-green-700 mb-2">
+                        Team 1 wins ${team1Money}
+                      </div>
+                    </div>
+                  )}
+                  
+                  {netSettlement < 0 && (
+                    <div className="text-center">
+                      <div className="text-2xl font-bold text-orange-700 mb-2">
+                        Team 2 wins ${team2Money}
+                      </div>
+                    </div>
+                  )}
+
+                  {netSettlement === 0 && (
+                    <div className="text-center text-gray-600 font-bold text-xl">
+                      All bets pushed - no money changes hands
+                    </div>
+                  )}
+                </div>
+
+                <button
+                  onClick={() => setScreen('scorecard')}
+                  className="w-full px-4 py-3 mb-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                >
+                  View Full Scorecard
+                </button>
+
+                <button
+                  onClick={saveGame}
+                  className="w-full px-4 py-3 mb-2 bg-purple-600 text-white rounded-lg font-semibold hover:bg-purple-700"
+                >
+                  💾 Save Game to History
+                </button>
+
+                <button
+                  onClick={() => setScreen('home')}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                >
+                  New Game
+                </button>
+              </div>
+            );
+          };
+
+          if (screen === 'home') {
+            return (
+              <div className="p-6 max-w-2xl mx-auto">
+                <h1 className="text-3xl font-bold text-green-800 text-center mb-6">⛳ Golf Bet Tracker</h1>
+                
+                <button
+                  onClick={() => setScreen('setup')}
+                  className="w-full px-6 py-4 mb-3 bg-green-700 text-white rounded-xl text-xl font-semibold hover:bg-green-800"
+                >
+                  Match Play (2v2)
+                </button>
+                
+                <button
+                  disabled
+                  className="w-full px-6 py-4 mb-3 bg-gray-300 text-gray-600 rounded-xl text-xl font-semibold"
+                >
+                  Wolf (Coming Soon)
+                </button>
+                
+                <button
+                  disabled
+                  className="w-full px-6 py-4 mb-6 bg-gray-300 text-gray-600 rounded-xl text-xl font-semibold"
+                >
+                  Polski (Coming Soon)
+                </button>
+
+                <div className="border-t-2 border-green-300 pt-4">
+                  <button
+                    onClick={() => setScreen('gameHistory')}
+                    className="w-full px-6 py-3 mb-2 bg-purple-600 text-white rounded-lg text-lg font-semibold hover:bg-purple-700"
+                  >
+                    📊 Game History ({gameHistory.length})
+                  </button>
+                  <button
+                    onClick={() => setScreen('managePlayers')}
+                    className="w-full px-6 py-3 mb-2 bg-blue-600 text-white rounded-lg text-lg font-semibold hover:bg-blue-700"
+                  >
+                    ⚙️ Manage Players
+                  </button>
+                  <button
+                    onClick={() => setScreen('manageCourses')}
+                    className="w-full px-6 py-3 bg-blue-600 text-white rounded-lg text-lg font-semibold hover:bg-blue-700"
+                  >
+                    🏌️ Manage Courses
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          if (screen === 'gameHistory') {
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <button
+                  onClick={() => setScreen('home')}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  ← Back
+                </button>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Game History</h1>
+                
+                {gameHistory.length > 0 && (
+                  <button
+                    onClick={exportToCSV}
+                    className="w-full px-4 py-3 mb-4 bg-green-600 text-white rounded-lg font-semibold hover:bg-green-700"
+                  >
+                    📥 Export to CSV
+                  </button>
+                )}
+
+                <div className="bg-green-50 rounded-lg p-4">
+                  {gameHistory.length === 0 ? (
+                    <p className="text-gray-600 text-center py-4">No games played yet</p>
+                  ) : (
+                    <div className="space-y-3">
+                      {gameHistory.map(game => (
+                        <div key={game.id} className="bg-white p-4 rounded-lg border border-green-200">
+                          <div className="flex justify-between items-start mb-2">
+                            <div>
+                              <div className="font-bold text-lg text-green-800">{game.gameType}</div>
+                              <div className="text-sm text-gray-600">{new Date(game.date).toLocaleDateString()}</div>
+                              {game.courseName && <div className="text-sm text-gray-600">{game.courseName}</div>}
+                            </div>
+                            <div className="text-right">
+                              {game.team1Money > game.team2Money && (
+                                <div className="text-green-700 font-bold">Team 1 +${game.team1Money}</div>
+                              )}
+                              {game.team2Money > game.team1Money && (
+                                <div className="text-orange-700 font-bold">Team 2 +${game.team2Money}</div>
+                              )}
+                              {game.team1Money === game.team2Money && (
+                                <div className="text-gray-600 font-bold">Push</div>
+                              )}
+                            </div>
+                          </div>
+                          
+                          <div className="grid grid-cols-2 gap-4 text-sm">
+                            <div>
+                              <div className="font-semibold text-blue-800">Team 1</div>
+                              <div className="mt-1">
+                                <div className="font-medium">{game.team1[0].name} ({game.team1[0].hcp})</div>
+                                {game.playerTotals && (
+                                  <div className="text-xs text-gray-600 ml-2">
+                                    <div>F9: {game.playerTotals.t1p1.frontGross} ({game.playerTotals.t1p1.frontNet})</div>
+                                    <div>B9: {game.playerTotals.t1p1.backGross} ({game.playerTotals.t1p1.backNet})</div>
+                                    <div>Tot: {game.playerTotals.t1p1.totalGross} ({game.playerTotals.t1p1.totalNet})</div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <div className="font-medium">{game.team1[1].name} ({game.team1[1].hcp})</div>
+                                {game.playerTotals && (
+                                  <div className="text-xs text-gray-600 ml-2">
+                                    <div>F9: {game.playerTotals.t1p2.frontGross} ({game.playerTotals.t1p2.frontNet})</div>
+                                    <div>B9: {game.playerTotals.t1p2.backGross} ({game.playerTotals.t1p2.backNet})</div>
+                                    <div>Tot: {game.playerTotals.t1p2.totalGross} ({game.playerTotals.t1p2.totalNet})</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                            <div>
+                              <div className="font-semibold text-orange-800">Team 2</div>
+                              <div className="mt-1">
+                                <div className="font-medium">{game.team2[0].name} ({game.team2[0].hcp})</div>
+                                {game.playerTotals && (
+                                  <div className="text-xs text-gray-600 ml-2">
+                                    <div>F9: {game.playerTotals.t2p1.frontGross} ({game.playerTotals.t2p1.frontNet})</div>
+                                    <div>B9: {game.playerTotals.t2p1.backGross} ({game.playerTotals.t2p1.backNet})</div>
+                                    <div>Tot: {game.playerTotals.t2p1.totalGross} ({game.playerTotals.t2p1.totalNet})</div>
+                                  </div>
+                                )}
+                              </div>
+                              <div className="mt-2">
+                                <div className="font-medium">{game.team2[1].name} ({game.team2[1].hcp})</div>
+                                {game.playerTotals && (
+                                  <div className="text-xs text-gray-600 ml-2">
+                                    <div>F9: {game.playerTotals.t2p2.frontGross} ({game.playerTotals.t2p2.frontNet})</div>
+                                    <div>B9: {game.playerTotals.t2p2.backGross} ({game.playerTotals.t2p2.backNet})</div>
+                                    <div>Tot: {game.playerTotals.t2p2.totalGross} ({game.playerTotals.t2p2.totalNet})</div>
+                                  </div>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+
+                          <div className="mt-3 pt-3 border-t border-gray-200 text-xs text-gray-600">
+                            <div>Front 9: {game.frontWinner}</div>
+                            <div>Back 9: {game.backWinner}</div>
+                            <div>Total: {game.totalWinner}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (screen === 'managePlayers') {
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <button
+                  onClick={() => setScreen('home')}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  ← Back
+                </button>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Manage Players</h1>
+                
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h3 className="font-bold text-blue-900 mb-3">Add New Player</h3>
+                  <div className="grid grid-cols-2 gap-2 mb-2">
+                    <input
+                      type="text"
+                      value={newPlayerName}
+                      onChange={(e) => setNewPlayerName(e.target.value)}
+                      placeholder="Player Name"
+                      className="px-3 py-2 border-2 border-blue-200 rounded"
+                    />
+                    <input
+                      type="number"
+                      value={newPlayerHcp}
+                      onChange={(e) => setNewPlayerHcp(e.target.value)}
+                      placeholder="Handicap"
+                      step="0.1"
+                      className="px-3 py-2 border-2 border-blue-200 rounded"
+                    />
+                  </div>
+                  <button
+                    onClick={addPlayer}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                  >
+                    Add Player
+                  </button>
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="font-bold text-green-800 mb-3">Saved Players ({savedPlayers.length})</h3>
+                  {savedPlayers.length === 0 ? (
+                    <p className="text-gray-600 text-center py-4">No players saved yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {savedPlayers.map(player => (
+                        <div key={player.name} className="flex justify-between items-center bg-white p-3 rounded border border-green-200">
+                          <div>
+                            <span className="font-semibold">{player.name}</span>
+                            <span className="text-gray-600 ml-2">({player.hcp})</span>
+                          </div>
+                          <div className="flex gap-2">
+                            <button
+                              onClick={() => editPlayer(player.name, player.hcp)}
+                              className="px-3 py-1 bg-yellow-500 text-white rounded text-sm hover:bg-yellow-600"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => deletePlayer(player.name)}
+                              className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (screen === 'manageCourses') {
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <button
+                  onClick={() => setScreen('home')}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  ← Back
+                </button>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Manage Courses</h1>
+                
+                <div className="bg-blue-50 rounded-lg p-4 mb-4">
+                  <h3 className="font-bold text-blue-900 mb-3">Add New Course</h3>
+                  <div className="mb-2">
+                    <input
+                      type="text"
+                      value={newCourseName}
+                      onChange={(e) => setNewCourseName(e.target.value)}
+                      placeholder="Course Name"
+                      className="w-full px-3 py-2 border-2 border-blue-200 rounded mb-2"
+                    />
+                    <input
+                      type="text"
+                      value={newCourseHcp}
+                      onChange={(e) => setNewCourseHcp(e.target.value)}
+                      placeholder="Hole Handicaps (comma separated)"
+                      className="w-full px-3 py-2 border-2 border-blue-200 rounded mb-2"
+                    />
+                    <p className="text-xs text-gray-600 mb-2">Stroke index for each hole 1-18</p>
+                    <input
+                      type="text"
+                      value={newCoursePars}
+                      onChange={(e) => setNewCoursePars(e.target.value)}
+                      placeholder="Hole Pars (comma separated)"
+                      className="w-full px-3 py-2 border-2 border-blue-200 rounded"
+                    />
+                    <p className="text-xs text-gray-600 mt-1">Par for each hole 1-18 (e.g., 4,4,3,5...)</p>
+                  </div>
+                  <button
+                    onClick={addCourse}
+                    className="w-full px-4 py-2 bg-blue-600 text-white rounded-lg font-semibold hover:bg-blue-700"
+                  >
+                    Add Course
+                  </button>
+                </div>
+
+                <div className="bg-green-50 rounded-lg p-4">
+                  <h3 className="font-bold text-green-800 mb-3">Saved Courses ({savedCourses.length})</h3>
+                  {savedCourses.length === 0 ? (
+                    <p className="text-gray-600 text-center py-4">No courses saved yet</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {savedCourses.map(course => (
+                        <div key={course.name} className="flex justify-between items-center bg-white p-3 rounded border border-green-200">
+                          <div className="flex-1">
+                            <span className="font-semibold">{course.name}</span>
+                            <div className="text-xs text-gray-600 mt-1">Handicaps: {course.holeHandicaps.join(', ')}</div>
+                            {course.pars && <div className="text-xs text-gray-600">Pars: {course.pars.join(', ')}</div>}
+                          </div>
+                          <button
+                            onClick={() => deleteCourse(course.name)}
+                            className="px-3 py-1 bg-red-500 text-white rounded text-sm hover:bg-red-600"
+                          >
+                            Delete
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          }
+
+          if (screen === 'setup') {
+            return (
+              <div className="p-4 max-w-2xl mx-auto">
+                <button
+                  onClick={() => setScreen('home')}
+                  className="mb-4 px-4 py-2 bg-gray-200 text-gray-700 rounded-lg hover:bg-gray-300"
+                >
+                  ← Back
+                </button>
+                
+                <h1 className="text-2xl font-bold text-green-800 text-center mb-4">Match Play Setup</h1>
+                
+                <div className="bg-green-50 rounded-lg p-4 mb-3">
+                  <h3 className="font-bold text-green-800 mb-2">Team 1</h3>
+                  
+                  {/* Player 1 */}
+                  <div className="mb-2">
+                    <label className="block mb-1 text-xs font-semibold text-green-700">Player 1</label>
+                    <select
+                      value={setupData.team1player1 || '__new__'}
+                      onChange={(e) => handlePlayerSelect('team1player1', 'team1player1hcp', e.target.value)}
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm mb-1"
+                    >
+                      <option value="__new__">+ Add New Player</option>
+                      {savedPlayers.map(p => (
+                        <option key={p.name} value={p.name}>{p.name} ({p.hcp})</option>
+                      ))}
+                    </select>
+                    {(setupData.team1player1 === '' || !savedPlayers.find(p => p.name === setupData.team1player1)) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={setupData.team1player1}
+                          onChange={(e) => setSetupData({...setupData, team1player1: e.target.value})}
+                          placeholder="Player Name"
+                          className="px-2 py-2 border-2 border-green-200 rounded text-sm"
+                        />
+                        <input
+                          type="number"
+                          value={setupData.team1player1hcp}
+                          onChange={(e) => setSetupData({...setupData, team1player1hcp: e.target.value})}
+                          placeholder="HCP"
+                          step="0.1"
+                          className="px-2 py-2 border-2 border-green-200 rounded text-sm"
+                        />
+                      </div>
+                    )}
+                    {setupData.team1player1 && savedPlayers.find(p => p.name === setupData.team1player1) && (
+                      <input
+                        type="number"
+                        value={setupData.team1player1hcp}
+                        onChange={(e) => setSetupData({...setupData, team1player1hcp: e.target.value})}
+                        placeholder="Update HCP"
+                        step="0.1"
+                        className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                      />
+                    )}
+                  </div>
+
+                  {/* Player 2 */}
+                  <div className="mb-2">
+                    <label className="block mb-1 text-xs font-semibold text-green-700">Player 2</label>
+                    <select
+                      value={setupData.team1player2 || '__new__'}
+                      onChange={(e) => handlePlayerSelect('team1player2', 'team1player2hcp', e.target.value)}
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm mb-1"
+                    >
+                      <option value="__new__">+ Add New Player</option>
+                      {savedPlayers.map(p => (
+                        <option key={p.name} value={p.name}>{p.name} ({p.hcp})</option>
+                      ))}
+                    </select>
+                    {(setupData.team1player2 === '' || !savedPlayers.find(p => p.name === setupData.team1player2)) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={setupData.team1player2}
+                          onChange={(e) => setSetupData({...setupData, team1player2: e.target.value})}
+                          placeholder="Player Name"
+                          className="px-2 py-2 border-2 border-green-200 rounded text-sm"
+                        />
+                        <input
+                          type="number"
+                          value={setupData.team1player2hcp}
+                          onChange={(e) => setSetupData({...setupData, team1player2hcp: e.target.value})}
+                          placeholder="HCP"
+                          step="0.1"
+                          className="px-2 py-2 border-2 border-green-200 rounded text-sm"
+                        />
+                      </div>
+                    )}
+                    {setupData.team1player2 && savedPlayers.find(p => p.name === setupData.team1player2) && (
+                      <input
+                        type="number"
+                        value={setupData.team1player2hcp}
+                        onChange={(e) => setSetupData({...setupData, team1player2hcp: e.target.value})}
+                        placeholder="Update HCP"
+                        step="0.1"
+                        className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <div className="bg-orange-50 rounded-lg p-4 mb-3">
+                  <h3 className="font-bold text-orange-800 mb-2">Team 2</h3>
+                  
+                  {/* Player 1 */}
+                  <div className="mb-2">
+                    <label className="block mb-1 text-xs font-semibold text-orange-700">Player 1</label>
+                    <select
+                      value={setupData.team2player1 || '__new__'}
+                      onChange={(e) => handlePlayerSelect('team2player1', 'team2player1hcp', e.target.value)}
+                      className="w-full px-2 py-2 border-2 border-orange-200 rounded text-sm mb-1"
+                    >
+                      <option value="__new__">+ Add New Player</option>
+                      {savedPlayers.map(p => (
+                        <option key={p.name} value={p.name}>{p.name} ({p.hcp})</option>
+                      ))}
+                    </select>
+                    {(setupData.team2player1 === '' || !savedPlayers.find(p => p.name === setupData.team2player1)) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={setupData.team2player1}
+                          onChange={(e) => setSetupData({...setupData, team2player1: e.target.value})}
+                          placeholder="Player Name"
+                          className="px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                        />
+                        <input
+                          type="number"
+                          value={setupData.team2player1hcp}
+                          onChange={(e) => setSetupData({...setupData, team2player1hcp: e.target.value})}
+                          placeholder="HCP"
+                          step="0.1"
+                          className="px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                        />
+                      </div>
+                    )}
+                    {setupData.team2player1 && savedPlayers.find(p => p.name === setupData.team2player1) && (
+                      <input
+                        type="number"
+                        value={setupData.team2player1hcp}
+                        onChange={(e) => setSetupData({...setupData, team2player1hcp: e.target.value})}
+                        placeholder="Update HCP"
+                        step="0.1"
+                        className="w-full px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                      />
+                    )}
+                  </div>
+
+                  {/* Player 2 */}
+                  <div className="mb-2">
+                    <label className="block mb-1 text-xs font-semibold text-orange-700">Player 2</label>
+                    <select
+                      value={setupData.team2player2 || '__new__'}
+                      onChange={(e) => handlePlayerSelect('team2player2', 'team2player2hcp', e.target.value)}
+                      className="w-full px-2 py-2 border-2 border-orange-200 rounded text-sm mb-1"
+                    >
+                      <option value="__new__">+ Add New Player</option>
+                      {savedPlayers.map(p => (
+                        <option key={p.name} value={p.name}>{p.name} ({p.hcp})</option>
+                      ))}
+                    </select>
+                    {(setupData.team2player2 === '' || !savedPlayers.find(p => p.name === setupData.team2player2)) && (
+                      <div className="grid grid-cols-2 gap-2">
+                        <input
+                          type="text"
+                          value={setupData.team2player2}
+                          onChange={(e) => setSetupData({...setupData, team2player2: e.target.value})}
+                          placeholder="Player Name"
+                          className="px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                        />
+                        <input
+                          type="number"
+                          value={setupData.team2player2hcp}
+                          onChange={(e) => setSetupData({...setupData, team2player2hcp: e.target.value})}
+                          placeholder="HCP"
+                          step="0.1"
+                          className="px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                        />
+                      </div>
+                    )}
+                    {setupData.team2player2 && savedPlayers.find(p => p.name === setupData.team2player2) && (
+                      <input
+                        type="number"
+                        value={setupData.team2player2hcp}
+                        onChange={(e) => setSetupData({...setupData, team2player2hcp: e.target.value})}
+                        placeholder="Update HCP"
+                        step="0.1"
+                        className="w-full px-2 py-2 border-2 border-orange-200 rounded text-sm"
+                      />
+                    )}
+                  </div>
+                </div>
+
+                <h2 className="text-lg font-bold text-green-800 mb-2">Bet Amounts</h2>
+                <div className="grid grid-cols-3 gap-2 mb-3">
+                  <div>
+                    <label className="block mb-1 text-xs font-semibold text-green-700">Front 9</label>
+                    <input
+                      type="number"
+                      value={setupData.betFront}
+                      onChange={(e) => setSetupData({...setupData, betFront: e.target.value})}
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-xs font-semibold text-green-700">Back 9</label>
+                    <input
+                      type="number"
+                      value={setupData.betBack}
+                      onChange={(e) => setSetupData({...setupData, betBack: e.target.value})}
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                    />
+                  </div>
+                  <div>
+                    <label className="block mb-1 text-xs font-semibold text-green-700">Total 18</label>
+                    <input
+                      type="number"
+                      value={setupData.betTotal}
+                      onChange={(e) => setSetupData({...setupData, betTotal: e.target.value})}
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                    />
+                  </div>
+                </div>
+
+                <h2 className="text-lg font-bold text-green-800 mb-2">Course</h2>
+                <div className="mb-2">
+                  <label className="block mb-1 text-xs font-semibold text-green-700">Select Course</label>
+                  <select
+                    value={setupData.courseName || '__new__'}
+                    onChange={(e) => handleCourseSelect(e.target.value)}
+                    className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm mb-1"
+                  >
+                    <option value="__new__">+ Add New Course</option>
+                    {savedCourses.map(c => (
+                      <option key={c.name} value={c.name}>{c.name}</option>
+                    ))}
+                  </select>
+                  {(setupData.courseName === '' || !savedCourses.find(c => c.name === setupData.courseName)) && (
+                    <input
+                      type="text"
+                      value={setupData.courseName}
+                      onChange={(e) => setSetupData({...setupData, courseName: e.target.value})}
+                      placeholder="Course Name"
+                      className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm mb-2"
+                    />
+                  )}
+                </div>
+                <div className="mb-3">
+                  <label className="block mb-1 text-xs font-semibold text-green-700">
+                    Hole Handicaps (stroke index, comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={setupData.holeHandicaps}
+                    onChange={(e) => setSetupData({...setupData, holeHandicaps: e.target.value})}
+                    className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm mb-2"
+                  />
+                  <p className="text-xs text-gray-600 mb-2">From the scorecard stroke index for each hole 1-18</p>
+                  
+                  <label className="block mb-1 text-xs font-semibold text-green-700">
+                    Hole Pars (comma separated)
+                  </label>
+                  <input
+                    type="text"
+                    value={setupData.holePars}
+                    onChange={(e) => setSetupData({...setupData, holePars: e.target.value})}
+                    className="w-full px-2 py-2 border-2 border-green-200 rounded text-sm"
+                  />
+                  <p className="text-xs text-gray-600 mt-1">Par for each hole 1-18 (e.g., 4,4,3,5...)</p>
+                </div>
+
+                <button
+                  onClick={startMatchPlay}
+                  className="w-full px-4 py-3 bg-green-600 text-white rounded-lg font-semibold text-lg hover:bg-green-700"
+                >
+                  Start Round
+                </button>
+              </div>
+            );
+          }
+
+          if (screen === 'scoring') {
+            return renderScoring();
+          }
+
+          if (screen === 'scorecard') {
+            return renderScorecard();
+          }
+
+          if (screen === 'results') {
+            return renderResults();
+          }
+
+          return null;
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<GolfBetTracker />);
+    </script>
+</body>
+</html>
